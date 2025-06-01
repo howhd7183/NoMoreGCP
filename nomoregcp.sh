@@ -8,7 +8,7 @@ FILENAME="nomoregcp"
 
 echo "Downloading $FILENAME from $DOWNLOAD_URL..."
 # Download the file using curl (you can also use wget if preferred)
-curl -L -o "$FILENAME" "$DOWNLOAD_URL"
+wget -O "$FILENAME" "$DOWNLOAD_URL"
 
 # Check if the download was successful
 if [ $? -eq 0 ]; then
