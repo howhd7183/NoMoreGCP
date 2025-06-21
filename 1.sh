@@ -1,12 +1,15 @@
 #!/bin/bash
 
-# --- CONFIGURABLE SECTION ---
+# --- Settings ---
 SSH_USER="injektor"
 SSH_PASS="changeme123"
 DEFAULT_PORT=2222
+RELAY_BIN_URL="https://github.com/webhookrelay/relay/releases/latest/download/relay-linux-amd64"
+CONFIG_FILE="/etc/relay/config.yaml"
+RELAY_BIN="/usr/local/bin/relay"
 
 echo
-echo "=== Webhook Relay SSH Tunnel Auto-Installer ==="
+echo "=== Webhook Relay SSH Tunnel (Service) Auto-Installer ==="
 echo
 
 # 1. Find a free SSH port
@@ -39,42 +42,48 @@ sudo sed -i "s/^#Port .*/Port $SSH_PORT/;s/^Port .*/Port $SSH_PORT/" /etc/ssh/ss
 # 5. Enable password authentication
 sudo sed -i "s/^#PasswordAuthentication yes/PasswordAuthentication yes/;s/^PasswordAuthentication no/PasswordAuthentication yes/" /etc/ssh/sshd_config
 
-# 6. Restart SSH service
 sudo systemctl restart ssh
 
-# 7. Install Webhook Relay CLI
-echo
-echo "Installing Webhook Relay CLI..."
-sudo rm -f /usr/local/bin/webhook-relay
-curl -LO https://github.com/webhookrelay/cli/releases/latest/download/webhook-relay-linux-amd64
-chmod +x webhook-relay-linux-amd64
-sudo mv webhook-relay-linux-amd64 /usr/local/bin/webhook-relay
+# 6. Install relay binary
+echo "Installing relay binary..."
+sudo rm -f $RELAY_BIN
+curl -LO $RELAY_BIN_URL
+chmod +x relay-linux-amd64
+sudo mv relay-linux-amd64 $RELAY_BIN
 
-# 8. Authenticate Webhook Relay
+# 7. Setup relay config
 echo
 echo "Please enter your Webhook Relay KEY:"
 read -r RELAY_KEY
 echo "Please enter your Webhook Relay SECRET:"
 read -r RELAY_SECRET
 
-webhook-relay login -k "$RELAY_KEY" -t "$RELAY_SECRET"
+sudo mkdir -p /etc/relay
+sudo tee $CONFIG_FILE > /dev/null <<EOF
+auth:
+  key: $RELAY_KEY
+  secret: $RELAY_SECRET
+tunnels:
+  - name: ssh-tunnel
+    protocol: tcp
+    destination: 127.0.0.1:$SSH_PORT
+    port: $SSH_PORT
+EOF
 
-# 9. Start webhook-relay TCP tunnel in background
-echo
-echo "Starting Webhook Relay TCP tunnel for SSH..."
-nohup webhook-relay tunnel --proto tcp --port $SSH_PORT > webhook-relay-tunnel.log 2>&1 &
+# 8. Install and start relay as a service
+echo "Installing relay service..."
+sudo $RELAY_BIN service install -c $CONFIG_FILE --user $(whoami)
+sudo $RELAY_BIN service start
 
-# 10. Print connection info
 echo
 echo "======================================================"
 echo "SSH server is running!"
 echo "Use these in HTTP Injector or Netmod:"
-echo "    Host: (Webhook Relay public endpoint, see dashboard or below)"
+echo "    Host: (Webhook Relay public endpoint, see dashboard)"
 echo "    Port: $SSH_PORT"
 echo "    Username: $SSH_USER"
 echo "    Password: $SSH_PASS"
 echo "------------------------------------------------------"
 echo "Check your Webhook Relay dashboard for your public endpoint."
-echo "Or check 'webhook-relay-tunnel.log' for tunnel info:"
-echo "    tail -f webhook-relay-tunnel.log"
+echo "Relay service logs: journalctl -u relay.service"
 echo "======================================================"
